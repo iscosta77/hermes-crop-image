@@ -1,0 +1,35 @@
+{
+    "name": "hermes/crop-image",
+    "description": "CropImage — processamento de imagens completo para PHP sem framework: crop posicionado, thumb com cache por dimensao, conversao WebP, marca d'agua — com estrutura de banco (hermes_images) e interacoes via iscos/voodoo-2026.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["image", "crop", "thumb", "webp", "watermark", "gallery", "upload", "php"],
+    "authors": [
+        {"name": "Hermes Agent (Nous Research)", "role": "creator and maintainer"},
+        {"name": "Ildefonso Costa", "email": "iscosta77@hotmail.com", "role": "publisher"}
+    ],
+    "require": {
+        "php": "^8.2",
+        "ext-gd": "*",
+        "iscos/voodoo-2026": "^1.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Hermes\\CropImage\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Hermes\\CropImage\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit --testdox"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
