@@ -57,8 +57,13 @@ final class ImageProcessor
         $h = $h === null ? (int) round($ih * $w / $iw) : max(1, $h);
 
         $cacheDir = rtrim($cacheDir, '/\\');
-        $hash = md5((string) realpath($src) . (string) filesize($src) . "{$w}x{$h}x{$quality}");
-        $nome = pathinfo($src, PATHINFO_FILENAME) . "-{$w}x{$h}-{$hash}.jpg";
+
+        // anti path traversal: cacheDir deve ser uma pasta simples (sem ..)
+        if ($cacheDir === '' || str_contains($cacheDir, '..')) {
+            throw new \InvalidArgumentException('cacheDir invalido (nao pode conter "..").');
+        }
+
+        $nome = pathinfo($src, PATHINFO_FILENAME) . "-{$w}x{$h}-" . md5((string) realpath($src) . (string) filesize($src)) . '.jpg';
         $dest = "{$cacheDir}/{$nome}";
 
         if (is_file($dest)) {

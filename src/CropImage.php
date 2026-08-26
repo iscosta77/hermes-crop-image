@@ -42,7 +42,13 @@ final class CropImage
         }
         [$largura, $altura] = $info;
 
-        $cacheDir = $opcoes['cache_dir'] ?? 'cache';
+        $cacheDir = rtrim($opcoes['cache_dir'] ?? 'cache', '/\\');
+
+        // anti path traversal: cache_dir nao pode conter '..'
+        if ($cacheDir === '' || str_contains($cacheDir, '..')) {
+            throw new \InvalidArgumentException('cache_dir invalido (nao pode conter "..").');
+        }
+        $opcoes['cache_dir'] = $cacheDir;
         $base = $src;
         $comWatermark = false;
 

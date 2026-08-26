@@ -100,12 +100,12 @@ final class ImageRepository
         }
 
         foreach ([$imagem->arquivo_original, $imagem->webp] as $arquivo) {
-            if ($arquivo !== null && is_file($arquivo)) {
+            if ($arquivo !== null && self::caminhoSeguro((string) $arquivo) && is_file($arquivo)) {
                 @unlink($arquivo);
             }
         }
         foreach (json_decode((string) ($imagem->thumbs ?? '[]'), true) ?: [] as $thumb) {
-            if (is_string($thumb) && is_file($thumb)) {
+            if (is_string($thumb) && self::caminhoSeguro($thumb) && is_file($thumb)) {
                 @unlink($thumb);
             }
         }
@@ -115,7 +115,16 @@ final class ImageRepository
         return true;
     }
 
-    /** Atalho: abre a conexao pelo .env (formato Laravel) e devolve o repositorio. */
+    /** So apaga caminhos relativos simples (anti delecao arbitraria via registro adulterado). */
+    private static function caminhoSeguro(string $caminho): bool
+    {
+        return $caminho !== ''
+            && !str_starts_with($caminho, '/')
+            && !preg_match('/^[A-Za-z]:[\\\\\\/]/', $caminho)
+            && !str_contains($caminho, '..');
+    }
+
+    /** Cria a partir do ambiente (padrao da familia). */
     public static function fromEnv(?string $envPath = null): self
     {
         $db = $envPath === null
