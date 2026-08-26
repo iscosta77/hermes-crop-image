@@ -1,5 +1,5 @@
 {
-    "name": "hermes/crop-image",
+    "name": "iscosta77/crop-image",
     "description": "CropImage — processamento de imagens completo para PHP sem framework: crop posicionado, thumb com cache por dimensao, conversao WebP, marca d'agua — com estrutura de banco (hermes_images) e interacoes via iscos/voodoo-2026.",
     "type": "library",
     "license": "MIT",
