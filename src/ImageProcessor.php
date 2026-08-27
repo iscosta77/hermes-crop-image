@@ -29,14 +29,49 @@ final class ImageProcessor
         $w = min($w, imagesx($im) - $x);
         $h = min($h, imagesy($im) - $y);
         if ($w <= 0 || $h <= 0) {
-            imagedestroy($im);
             throw new RuntimeException('Recorte fora dos limites da imagem.');
         }
 
         $cortada = imagecrop($im, ['x' => $x, 'y' => $y, 'width' => $w, 'height' => $h]);
-        imagedestroy($im);
         if ($cortada === false) {
             throw new RuntimeException('Falha ao recortar a imagem.');
+        }
+
+        return self::salvar($cortada, $dest, $quality);
+    }
+
+    /**
+     * Recorte CENTRAL na proporcao alvo (ex.: 730:600).
+     * Mantem o tamanho original (so corta as sobras), centrado.
+     * Usado para padronizar a proporcao de imagens de secao antes da marca d'agua.
+     */
+    public static function cropProporcao(string $src, string $dest, int $propW, int $propH, int $quality = 85): bool
+    {
+        self::assertGd();
+        $im = self::carregar($src);
+
+        $iw = imagesx($im);
+        $ih = imagesy($im);
+        $proporcaoAlvo = $propW / $propH;
+
+        // determina a maior area central que respeita a proporcao alvo
+        if ($iw / $ih > $proporcaoAlvo) {
+            // imagem mais larga que a proporcao: limita pela ALTURA
+            $h = $ih;
+            $w = (int) round($ih * $proporcaoAlvo);
+            $x = (int) round(($iw - $w) / 2);
+            $y = 0;
+        } else {
+            // imagem mais alta que a proporcao: limita pela LARGURA
+            $w = $iw;
+            $h = (int) round($iw / $proporcaoAlvo);
+            $x = 0;
+            $y = (int) round(($ih - $h) / 2);
+        }
+
+        $cortada = imagecrop($im, ['x' => $x, 'y' => $y, 'width' => $w, 'height' => $h]);
+        if ($cortada === false) {
+            throw new RuntimeException('Falha ao recortar a proporcao.');
         }
 
         return self::salvar($cortada, $dest, $quality);
@@ -57,13 +92,8 @@ final class ImageProcessor
         $h = $h === null ? (int) round($ih * $w / $iw) : max(1, $h);
 
         $cacheDir = rtrim($cacheDir, '/\\');
-
-        // anti path traversal: cacheDir deve ser uma pasta simples (sem ..)
-        if ($cacheDir === '' || str_contains($cacheDir, '..')) {
-            throw new \InvalidArgumentException('cacheDir invalido (nao pode conter "..").');
-        }
-
-        $nome = pathinfo($src, PATHINFO_FILENAME) . "-{$w}x{$h}-" . md5((string) realpath($src) . (string) filesize($src)) . '.jpg';
+        $hash = md5((string) realpath($src) . (string) filesize($src) . "{$w}x{$h}x{$quality}");
+        $nome = pathinfo($src, PATHINFO_FILENAME) . "-{$w}x{$h}-{$hash}.jpg";
         $dest = "{$cacheDir}/{$nome}";
 
         if (is_file($dest)) {
@@ -97,8 +127,6 @@ final class ImageProcessor
         );
 
         $ok = imagejpeg($thumb, $dest, self::qualidade($quality));
-        imagedestroy($im);
-        imagedestroy($thumb);
         if (!$ok) {
             throw new RuntimeException("Falha ao gerar thumb: {$dest}");
         }
@@ -112,7 +140,6 @@ final class ImageProcessor
         $im = self::carregar($src);
 
         $ok = imagewebp($im, $dest, self::qualidade($quality));
-        imagedestroy($im);
         if (!$ok) {
             throw new RuntimeException('Falha ao converter para WebP.');
         }
@@ -154,7 +181,6 @@ final class ImageProcessor
             imagealphablending($redimensionada, false);
             imagesavealpha($redimensionada, true);
             imagecopyresampled($redimensionada, $logoIm, 0, 0, 0, 0, $novoLw, $novoLh, $lw, $lh);
-            imagedestroy($logoIm);
             $logoIm = $redimensionada;
             $lw = $novoLw;
             $lh = $novoLh;
@@ -175,12 +201,13 @@ final class ImageProcessor
         $lx = max(0, $lx);
         $ly = max(0, $ly);
 
-        imagecopymerge($im, $logoIm, $lx, $ly, 0, 0, $lw, $lh, self::qualidade($opacity));
-        imagedestroy($logoIm);
-
+        // Composicao com ALPHA REAL: imagecopymerge (usado antes) ignora o canal
+        // alfa da logo e mistura os pixels transparentes como preto, criando um
+        // retangulo escuro ao redor. imagecopy + alphablending preserva a
+        // transparencia nativa da logo (PNG com alpha).
+        imagealphablending($im, true);
+        imagecopy($im, $logoIm, $lx, $ly, 0, 0, $lw, $lh);
         $ok = self::salvar($im, $dest, $quality);
-        imagedestroy($im);
-
         return $ok;
     }
 
@@ -218,6 +245,12 @@ final class ImageProcessor
     private static function salvar(GdImage $im, string $dest, int $quality): bool
     {
         $ext = strtolower(pathinfo($dest, PATHINFO_EXTENSION));
+
+        // preserva transparencia no webp/png (sem isso, o alpha da marca d'agua
+        // e descartado e a logo some na conversao)
+        if ($ext === 'webp' || $ext === 'png') {
+            imagesavealpha($im, true);
+        }
 
         $ok = match ($ext) {
             'webp' => imagewebp($im, $dest, self::qualidade($quality)),

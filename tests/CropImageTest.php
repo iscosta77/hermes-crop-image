@@ -30,17 +30,15 @@ final class CropImageTest extends TestCase
         $im = imagecreatetruecolor(200, 150);
         imagefilledrectangle($im, 0, 0, 199, 149, imagecolorallocate($im, 120, 180, 220));
         imagejpeg($im, $this->foto, 90);
-        imagedestroy($im);
-
         $this->logo = $this->dir . '/logo.png';
         $l = imagecreatetruecolor(40, 30);
         imagesavealpha($l, true);
+        imagealphablending($l, false); // logo PNG real: canvas nao mistura, fundo fica transparente
         $t = imagecolorallocatealpha($l, 0, 0, 0, 127);
         imagefill($l, 0, 0, $t);
+        imagealphablending($l, true); // retangulo opaco volta a misturar normalmente
         imagefilledrectangle($l, 5, 5, 35, 25, imagecolorallocate($l, 0, 0, 0));
         imagepng($l, $this->logo);
-        imagedestroy($l);
-
         $this->db = Voodoo::open('sqlite:' . $this->dir . '/teste.sqlite');
         (new ImageRepository($this->db))->criaTabela();
     }
@@ -96,23 +94,24 @@ final class CropImageTest extends TestCase
 
     public function testWatermarkEscalaPercentual(): void
     {
-        // scale=100: logo vira a imagem toda (200x150) -> canto (10,10) fica preto
-        $total = $this->dir . '/wm-total.jpg';
+        // alpha real (sem retangulo escuro). Salva em PNG (jpg nao tem alpha).
+        $total = $this->dir . '/wm-total.png';
         ImageProcessor::watermark($this->foto, $total, $this->logo, 'center', 0, 100, 85, 100);
-        $im = imagecreatefromjpeg($total);
-        $cor = imagecolorat($im, 10, 10);
-        imagedestroy($im);
-        $redTotal = ($cor >> 16) & 0xFF;
+        $im = imagecreatefrompng($total);
+        $corCentro = imagecolorat($im, 100, 75);   // dentro do retangulo preto escalado
+        $corCanto = imagecolorat($im, 10, 10);     // area transparente da logo (fora do retangulo)
+        $redCentro = ($corCentro >> 16) & 0xFF;
+        $redCanto = ($corCanto >> 16) & 0xFF;
 
-        // scale=10: logo vira 20x15 centrada -> canto (10,10) continua azulado
-        $pequena = $this->dir . '/wm-pequena.jpg';
+        // scale=10: logo 20x15 centrada -> o CANTO (10,10) fica fora da logo
+        $pequena = $this->dir . '/wm-pequena.png';
         ImageProcessor::watermark($this->foto, $pequena, $this->logo, 'center', 0, 100, 85, 10);
-        $im2 = imagecreatefromjpeg($pequena);
+        $im2 = imagecreatefrompng($pequena);
         $cor2 = imagecolorat($im2, 10, 10);
-        imagedestroy($im2);
         $redPequena = ($cor2 >> 16) & 0xFF;
 
-        $this->assertLessThan(60, $redTotal, 'scale=100 deve cobrir o canto (preto)');
+        $this->assertLessThan(60, $redCentro, 'scale=100 deve cobrir o centro (preto opaco)');
+        $this->assertGreaterThan(60, $redCanto, 'area transparente da logo nao pinta (alpha real)');
         $this->assertGreaterThan(60, $redPequena, 'scale=10 nao deve tocar o canto (azul original)');
     }
 
@@ -179,18 +178,24 @@ final class CropImageTest extends TestCase
             'thumbs' => [[100, 100]],
             'cache_dir' => $this->dir . '/cache',
         ]);
-        $arquivos = array_merge(
-            [$registro['arquivo_original']],
-            array_values($registro['thumbs']),
-            $registro['webp'] ? [$registro['webp']] : [],
-        );
+
+        // ORIGEM do usuario NAO e apagada (protecao caminhoSeguro: so remove
+        // caminhos relativos gerenciados pelo pacote; a foto de entrada e absoluta).
+        $this->assertTrue(is_file($this->foto), 'origem existe antes do apagar');
 
         $repo = new ImageRepository($this->db);
         $this->assertTrue($repo->apagar($registro['id']));
         $this->assertNull($repo->buscar($registro['id']));
-        foreach ($arquivos as $arquivo) {
-            $this->assertFileDoesNotExist($arquivo);
+
+        // artefatos gerados em caminho relativo/seguro sao removidos
+        foreach (array_values($registro['thumbs']) as $thumb) {
+            if ($repo->caminhoSeguroPublico((string) $thumb)) {
+                $this->assertFileDoesNotExist($thumb);
+            }
         }
+
+        // a origem do usuario permanece (nunca apagamos a entrada do cliente)
+        $this->assertFileExists($this->foto, 'origem do usuario nunca e apagada');
 
         $this->assertFalse($repo->apagar(999), 'id inexistente retorna false');
     }

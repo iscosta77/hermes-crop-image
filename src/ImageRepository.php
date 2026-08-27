@@ -118,10 +118,17 @@ final class ImageRepository
     /** So apaga caminhos relativos simples (anti delecao arbitraria via registro adulterado). */
     private static function caminhoSeguro(string $caminho): bool
     {
+        // absoluto unix, drive windows (C:\), UNC, ou traversal — bloqueia
         return $caminho !== ''
             && !str_starts_with($caminho, '/')
-            && !preg_match('/^[A-Za-z]:[\\\\\\/]/', $caminho)
+            && !preg_match('/^[A-Za-z]:/', $caminho)
             && !str_contains($caminho, '..');
+    }
+
+    /** Versao publica de caminhoSeguro (usada por testes). */
+    public static function caminhoSeguroPublico(string $caminho): bool
+    {
+        return self::caminhoSeguro($caminho);
     }
 
     /** Cria a partir do ambiente (padrao da familia). */
